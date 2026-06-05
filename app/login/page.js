@@ -22,7 +22,7 @@ export default function LoginPage() {
         await signInWithEmailAndPassword(auth, email, password);
         alert('Login Success! 🎉');
       }
-      router.push('/'); // Login ପରେ Home Page କୁ ଯିବ
+      router.push('/admin'); // ✅ Dashboard କୁ ଯିବ
     } catch (error) {
       if (error.code === 'auth/email-already-in-use') {
         alert('ଏଇ Email ରେ Account ଅଛି। Login କର।');
@@ -42,26 +42,31 @@ export default function LoginPage() {
       <p style={{ textAlign: 'center', marginBottom: 30, fontSize: 18 }}>
         {isSignup ? 'ନୂଆ Account ବନାନ୍ତୁ' : 'Email ଦେଇ Login କରନ୍ତୁ'}
       </p>
-      
       <input 
         type="email" 
-        placeholder="Email Address"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ padding: 12, width: '100%', marginBottom: 15, fontSize: 16, border: '1px solid #ccc', borderRadius: 8 }}
+        placeholder="Email Address" 
+        value={email} 
+        onChange={(e) => setEmail(e.target.value)} 
+        style={{ padding: 12, width: '100%', marginBottom: 15, fontSize: 16, border: '1px solid #ccc', borderRadius: 8 }} 
       />
       <input 
         type="password" 
-        placeholder="Password - 6 Digit ରୁ ଅଧିକ"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{ padding: 12, width: '100%', marginBottom: 15, fontSize: 16, border: '1px solid #ccc', borderRadius: 8 }}
+        placeholder="Password - 6 Digit ରୁ ଅଧିକ" 
+        value={password} 
+        onChange={(e) => setPassword(e.target.value)} 
+        style={{ padding: 12, width: '100%', marginBottom: 15, fontSize: 16, border: '1px solid #ccc', borderRadius: 8 }} 
       />
-      <button onClick={handleAuth} disabled={loading} style={{ padding: 12, width: '100%', fontSize: 16, background: '#16a34a', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', marginBottom: 15 }}>
+      <button 
+        onClick={handleAuth} 
+        disabled={loading} 
+        style={{ padding: 12, width: '100%', fontSize: 16, background: '#16a34a', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', marginBottom: 15 }}
+      >
         {loading ? 'Loading...' : isSignup ? 'Sign Up' : 'Login'}
       </button>
-
-      <p style={{ textAlign: 'center', cursor: 'pointer', color: '#2563eb' }} onClick={() => setIsSignup(!isSignup)}>
+      <p 
+        style={{ textAlign: 'center', cursor: 'pointer', color: '#2563eb' }} 
+        onClick={() => setIsSignup(!isSignup)}
+      >
         {isSignup ? 'ପୁରୁଣା Account ଅଛି? Login କର' : 'ନୂଆ User? Sign Up କର'}
       </p>
     </div>
