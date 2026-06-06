@@ -1,4 +1,4 @@
-"use client"
+"use client";
 import { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useRouter } from 'next/navigation';
@@ -28,20 +28,17 @@ export default function CheckoutPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handlePlaceOrder = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (cartItems.length === 0) {
       alert('Cart is empty!');
       router.push('/products');
       return;
     }
-
     if (!formData.name || !formData.phone || !formData.address || !formData.pincode) {
       alert('Please fill all required fields');
       return;
     }
-
     if (formData.phone.length !== 10) {
       alert('Please enter valid 10 digit phone number');
       return;
@@ -70,13 +67,51 @@ export default function CheckoutPage() {
         createdAt: serverTimestamp()
       };
 
-      await addDoc(collection(db, 'orders'), orderData);
-      setCartItems([]); // Cart ଖାଲି କର
-      alert('Order Placed Successfully! 🎉\nWe will contact you soon.');
+      const docRef = await addDoc(collection(db, 'orders'), orderData);
+      const orderId = docRef.id.slice(-6);
+      
+      const itemsList = cartItems.map(item => 
+        `• ${item.productName} x ${item.qty} = ₹${item.sellingPrice * item.qty}`
+      ).join('%0A');
+
+      // 1. CUSTOMER କୁ WhatsApp Message
+      const customerMessage = `*Biswakarma Agro* 🌾%0A%0A` +
+        `Hi ${formData.name},%0A` +
+        `Your order *#${orderId}* confirmed ✅%0A%0A` +
+        `*Items:*%0A${itemsList}%0A%0A` +
+        `*Total: ₹${total}*%0A` +
+        `*Payment:* Cash on Delivery%0A%0A` +
+        `*Delivery Address:*%0A${formData.address}, ${formData.city} - ${formData.pincode}%0A%0A` +
+        `We will deliver in 2-3 days.%0A` +
+        `Call: 9692333566 for help 🙏`;
+
+      const customerPhone = `91${formData.phone}`;
+      
+      // 2. ADMIN କୁ WhatsApp Alert - ତୁମ Number 9692333566
+      const yourNumber = "919692333566"; 
+      const adminMessage = `*🔔 New Order Received*%0A%0A` +
+        `*Order ID:* #${orderId}%0A` +
+        `*Customer:* ${formData.name}%0A` +
+        `*Phone:* ${formData.phone}%0A%0A` +
+        `*Items:*%0A${itemsList}%0A%0A` +
+        `*Total Amount:* ₹${total}%0A` +
+        `*Address:* ${formData.address}, ${formData.city}, ${formData.state} - ${formData.pincode}%0A%0A` +
+        `Check: https://biswakarma-agro.vercel.app/sales`;
+
+      setCartItems([]);
+      
+      window.open(`https://wa.me/${customerPhone}?text=${customerMessage}`, '_blank');
+      
+      setTimeout(() => {
+        window.open(`https://wa.me/${yourNumber}?text=${adminMessage}`, '_blank');
+      }, 2000);
+
       router.push('/products');
+      alert('Order placed successfully! Check WhatsApp.');
+      
     } catch (error) {
-      console.error('Error placing order:', error);
-      alert('Failed to place order. Please try again.');
+      console.error(error);
+      alert('Order failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -99,66 +134,45 @@ export default function CheckoutPage() {
     <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '32px 20px' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <h1 style={{ fontSize: 32, fontWeight: 700, color: '#16a34a', marginBottom: 32 }}>Checkout</h1>
-        
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24 }}>
           {/* Delivery Form */}
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e2e8f0' }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Delivery Address</h2>
-            <form onSubmit={handlePlaceOrder}>
+            <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Full Name *</label>
-                <input type="text" name="name" value={formData.name} onChange={handleChange} required
-                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }}
-                  placeholder="Enter your name" />
+                <input type="text" name="name" value={formData.name} onChange={handleChange} required style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="Enter your name" />
               </div>
-
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Phone Number *</label>
-                <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required maxLength={10}
-                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }}
-                  placeholder="10 digit mobile number" />
+                <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required maxLength={10} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="10 digit mobile number" />
               </div>
-
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Address *</label>
-                <textarea name="address" value={formData.address} onChange={handleChange} required rows={3}
-                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none', resize: 'none' }}
-                  placeholder="House No, Street, Area" />
+                <textarea name="address" value={formData.address} onChange={handleChange} required rows={3} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none', resize: 'none' }} placeholder="House No, Street, Area" />
               </div>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Pincode *</label>
-                  <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} required maxLength={6}
-                    style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }}
-                    placeholder="6 digit pincode" />
+                  <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} required maxLength={6} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="6 digit pincode" />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>City</label>
-                  <input type="text" name="city" value={formData.city} onChange={handleChange}
-                    style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }}
-                    placeholder="City" />
+                  <input type="text" name="city" value={formData.city} onChange={handleChange} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="City" />
                 </div>
               </div>
-
               <div style={{ marginBottom: 24 }}>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>State</label>
-                <input type="text" name="state" value={formData.state} onChange={handleChange}
-                  style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }}
-                  placeholder="State" />
+                <input type="text" name="state" value={formData.state} onChange={handleChange} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="State" />
               </div>
-
               <div style={{ background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: 8, padding: 16, marginBottom: 20 }}>
                 <p style={{ fontSize: 16, fontWeight: 600, color: '#166534', margin: 0 }}>💵 Cash on Delivery Available</p>
               </div>
-
-              <button type="submit" disabled={loading}
-                style={{ width: '100%', padding: '16px', background: loading ? '#94a3b8' : '#16a34a', color: 'white', border: 'none', borderRadius: 8, cursor: loading ? 'not-allowed' : 'pointer', fontSize: 18, fontWeight: 700 }}>
+              <button type="submit" disabled={loading} style={{ width: '100%', padding: '16px', background: loading ? '#94a3b8' : '#16a34a', color: 'white', border: 'none', borderRadius: 8, cursor: loading ? 'not-allowed' : 'pointer', fontSize: 18, fontWeight: 700 }}>
                 {loading ? 'Placing Order...' : `Place Order - ₹${total}`}
               </button>
             </form>
           </div>
-
           {/* Order Summary */}
           <div style={{ background: 'white', borderRadius: 12, padding: 24, height: 'fit-content', border: '1px solid #e2e8f0', position: 'sticky', top: 32 }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Order Summary</h2>
