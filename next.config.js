@@ -7,10 +7,10 @@ const withPWA = require('next-pwa')({
 })
 
 const nextConfig = {
-  output: 'export', // 🔥 ଏଇଟା ନୂଆ Add ହେଲା
+  // output: 'export', // 🔥 ଏଇଟା କମେଣ୍ଟ କରିଦିଅ
   reactStrictMode: true,
   images: {
-    unoptimized: true // 🔥 ଏଇଟା ନୂଆ Add ହେଲା
+    unoptimized: true
   },
   turbopack: {}
 }
