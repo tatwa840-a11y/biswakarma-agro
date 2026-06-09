@@ -1,15 +1,15 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 
 export default function ProductDetails({ params }) {
+  const { id } = use(params); // ✅ Fix ଏଇଠି
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const router = useRouter();
-  const id = params.id;
 
   const fetchProduct = async () => {
     try {
@@ -50,22 +50,11 @@ export default function ProductDetails({ params }) {
       <p style={{ color: product.stockStatus === 'In Stock' ? '#16a34a' : '#dc2626' }}>
         {product.stockStatus}
       </p>
-
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 20 }}>
         <label>Quantity:</label>
-        <input
-          type="number"
-          min="1"
-          value={quantity}
-          onChange={(e) => setQuantity(Number(e.target.value))}
-          style={{ width: 60, padding: 6, borderRadius: 4, border: '1px solid #ddd' }}
-        />
+        <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} style={{ width: 60, padding: 6, borderRadius: 4, border: '1px solid #ddd' }} />
       </div>
-
-      <button
-        onClick={() => alert(`Added ${quantity} ${product.productName} to cart!`)}
-        style={{ marginTop: 20, padding: '12px 24px', background: '#16a34a', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', width: '100%' }}
-      >
+      <button onClick={() => alert(`Added ${quantity} ${product.productName} to cart!`)} style={{ marginTop: 20, padding: '12px 24px', background: '#16a34a', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', width: '100%' }} >
         Add to Cart
       </button>
     </div>

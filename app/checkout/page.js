@@ -1,194 +1,228 @@
-"use client";
-import { useState } from 'react';
-import { useCart } from '../context/CartContext';
+'use client';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { FiUser, FiLogOut } from 'react-icons/fi';
 
 export default function CheckoutPage() {
-  const { cartItems, setCartItems } = useCart();
   const router = useRouter();
+  const [cart, setCart] = useState([]);
+  const [customer, setCustomer] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    address: '',
-    pincode: '',
-    city: '',
-    state: ''
-  });
 
-  const total = cartItems.reduce((sum, item) => {
-    const price = Number(item.sellingPrice) || 0;
-    const quantity = Number(item.qty) || 0;
-    return sum + (price * quantity);
-  }, 0);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('COD');
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  useEffect(() => {
+    const cartData = localStorage.getItem('cart');
+    if (cartData) {
+      const parsedCart = JSON.parse(cartData);
+      const fixedCart = parsedCart.map(item => ({
+       ...item,
+        price: Number(item.price) || Number(item.rate) || Number(item.amount) || Number(item.sellingPrice) || 0,
+        qty: Number(item.qty) || Number(item.quantity) || 1
+      }));
+      setCart(fixedCart);
+    } else {
+      router.push('/products');
+    }
+
+    const customerData = localStorage.getItem('customer');
+    if (customerData) {
+      const data = JSON.parse(customerData);
+      setCustomer(data);
+      setName(data.name);
+      setPhone(data.mobile);
+    }
+  }, [router]);
+
+  const handleCustomerLogout = () => {
+    localStorage.removeItem('customer');
+    setCustomer(null);
+    setName('');
+    setPhone('');
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (cartItems.length === 0) {
-      alert('Cart is empty!');
-      router.push('/products');
+  const totalAmount = cart.reduce((sum, item) => {
+    const price = Number(item.price) || 0;
+    const qty = Number(item.qty) || 0;
+    return sum + (price * qty);
+  }, 0);
+
+  const handlePlaceOrder = async () => {
+    if (!name.trim() ||!phone.trim() ||!address.trim()) {
+      alert('ସବୁ Details ଭରନ୍ତୁ');
       return;
     }
-    if (!formData.name || !formData.phone || !formData.address || !formData.pincode) {
-      alert('Please fill all required fields');
-      return;
-    }
-    if (formData.phone.length !== 10) {
-      alert('Please enter valid 10 digit phone number');
+    if (totalAmount === 0) {
+      alert('Cart ରେ Price 0 ଅଛି। Product ପୁଣି Add କରନ୍ତୁ');
       return;
     }
 
     setLoading(true);
     try {
       const orderData = {
-        customerName: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-        pincode: formData.pincode,
-        city: formData.city,
-        state: formData.state,
-        items: cartItems.map(item => ({
-          id: item.id,
-          productName: item.productName,
-          brand: item.brand,
-          price: Number(item.sellingPrice),
-          qty: Number(item.qty),
-          imageUrl: item.imageUrl
-        })),
-        totalAmount: total,
-        status: 'Pending',
-        paymentMethod: 'Cash on Delivery',
-        createdAt: serverTimestamp()
+        customerName: name.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        items: cart,
+        totalAmount: totalAmount,
+        paymentMethod: paymentMethod,
+        status: paymentMethod === 'COD'? 'Pending' : 'Payment Pending',
+        createdAt: serverTimestamp(),
       };
 
       const docRef = await addDoc(collection(db, 'orders'), orderData);
-      const orderId = docRef.id.slice(-6);
-      
-      const itemsList = cartItems.map(item => 
-        `• ${item.productName} x ${item.qty} = ₹${item.sellingPrice * item.qty}`
-      ).join('%0A');
-
-      // 1. CUSTOMER କୁ WhatsApp Message
-      const customerMessage = `*Biswakarma Agro* 🌾%0A%0A` +
-        `Hi ${formData.name},%0A` +
-        `Your order *#${orderId}* confirmed ✅%0A%0A` +
-        `*Items:*%0A${itemsList}%0A%0A` +
-        `*Total: ₹${total}*%0A` +
-        `*Payment:* Cash on Delivery%0A%0A` +
-        `*Delivery Address:*%0A${formData.address}, ${formData.city} - ${formData.pincode}%0A%0A` +
-        `We will deliver in 2-3 days.%0A` +
-        `Call: 9692333566 for help 🙏`;
-
-      const customerPhone = `91${formData.phone}`;
-      
-      // 2. ADMIN କୁ WhatsApp Alert - ତୁମ Number 9692333566
-      const yourNumber = "919692333566"; 
-      const adminMessage = `*🔔 New Order Received*%0A%0A` +
-        `*Order ID:* #${orderId}%0A` +
-        `*Customer:* ${formData.name}%0A` +
-        `*Phone:* ${formData.phone}%0A%0A` +
-        `*Items:*%0A${itemsList}%0A%0A` +
-        `*Total Amount:* ₹${total}%0A` +
-        `*Address:* ${formData.address}, ${formData.city}, ${formData.state} - ${formData.pincode}%0A%0A` +
-        `Check: https://biswakarma-agro.vercel.app/sales`;
-
-      setCartItems([]);
-      
-      window.open(`https://wa.me/${customerPhone}?text=${customerMessage}`, '_blank');
-      
-      setTimeout(() => {
-        window.open(`https://wa.me/${yourNumber}?text=${adminMessage}`, '_blank');
-      }, 2000);
-
-      router.push('/products');
-      alert('Order placed successfully! Check WhatsApp.');
-      
+      localStorage.removeItem('cart');
+      router.push(`/order-success?id=${docRef.id}`);
     } catch (error) {
-      console.error(error);
-      alert('Order failed. Please try again.');
-    } finally {
+      alert('Error: ' + error.message);
       setLoading(false);
     }
   };
 
-  if (cartItems.length === 0) {
+  if (cart.length === 0) {
     return (
-      <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: 18, color: '#64748b', marginBottom: 16 }}>Your cart is empty</p>
-          <button onClick={() => router.push('/products')} style={{ padding: '12px 24px', background: '#16a34a', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 16, fontWeight: 600 }}>
-            Continue Shopping
-          </button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Cart Empty</p>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '32px 20px' }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, color: '#16a34a', marginBottom: 32 }}>Checkout</h1>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24 }}>
-          {/* Delivery Form */}
-          <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e2e8f0' }}>
-            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Delivery Address</h2>
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Full Name *</label>
-                <input type="text" name="name" value={formData.name} onChange={handleChange} required style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="Enter your name" />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Phone Number *</label>
-                <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required maxLength={10} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="10 digit mobile number" />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Address *</label>
-                <textarea name="address" value={formData.address} onChange={handleChange} required rows={3} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none', resize: 'none' }} placeholder="House No, Street, Area" />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Pincode *</label>
-                  <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} required maxLength={6} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="6 digit pincode" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>City</label>
-                  <input type="text" name="city" value={formData.city} onChange={handleChange} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="City" />
+    <div className="min-h-screen bg-slate-50 p-4">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold text-green-600 mb-6">Checkout</h1>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl p-6 border border-slate-200">
+            <h2 className="text-xl font-bold mb-4">Customer Details</h2>
+
+            {customer? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                      <FiUser className="text-green-600" size={20} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-green-700">{customer.name}</p>
+                      <p className="text-sm text-green-600">+91 {customer.mobile}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCustomerLogout}
+                    className="flex items-center gap-1 text-red-600 hover:text-red-700 text-sm font-semibold"
+                  >
+                    <FiLogOut size={16} /> Logout
+                  </button>
                 </div>
               </div>
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>State</label>
-                <input type="text" name="state" value={formData.state} onChange={handleChange} style={{ width: '100%', padding: '12px', border: '2px solid #e2e8f0', borderRadius: 8, fontSize: 16, outline: 'none' }} placeholder="State" />
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-700 mb-3">Already have an account?</p>
+                <button
+                  onClick={() => router.push('/customer-login')}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-semibold"
+                >
+                  Customer Login
+                </button>
               </div>
-              <div style={{ background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: 8, padding: 16, marginBottom: 20 }}>
-                <p style={{ fontSize: 16, fontWeight: 600, color: '#166534', margin: 0 }}>💵 Cash on Delivery Available</p>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={customer}
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:bg-slate-100"
+                  placeholder="ନାମ ଲେଖନ୍ତୁ"
+                />
               </div>
-              <button type="submit" disabled={loading} style={{ width: '100%', padding: '16px', background: loading ? '#94a3b8' : '#16a34a', color: 'white', border: 'none', borderRadius: 8, cursor: loading ? 'not-allowed' : 'pointer', fontSize: 18, fontWeight: 700 }}>
-                {loading ? 'Placing Order...' : `Place Order - ₹${total}`}
-              </button>
-            </form>
-          </div>
-          {/* Order Summary */}
-          <div style={{ background: 'white', borderRadius: 12, padding: 24, height: 'fit-content', border: '1px solid #e2e8f0', position: 'sticky', top: 32 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Order Summary</h2>
-            {cartItems.map(item => (
-              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
-                <div>
-                  <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{item.productName}</p>
-                  <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0' }}>Qty: {item.qty}</p>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Phone Number *</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={customer}
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:bg-slate-100"
+                  placeholder="10 Digit Phone Number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Full Address *</label>
+                <textarea
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+                  rows="3"
+                  placeholder="ଗାଁ, ପୋଷ୍ଟ, ଜିଲ୍ଲା, ପିନ୍ କୋଡ"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">Payment Method *</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 p-3 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="payment"
+                      value="COD"
+                      checked={paymentMethod === 'COD'}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                    />
+                    <span>Cash on Delivery</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-3 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="payment"
+                      value="Online"
+                      checked={paymentMethod === 'Online'}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                    />
+                    <span>Online Payment</span>
+                  </label>
                 </div>
-                <p style={{ fontWeight: 600 }}>₹{Number(item.sellingPrice) * Number(item.qty)}</p>
               </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, paddingTop: 16, borderTop: '2px solid #e2e8f0' }}>
-              <span style={{ fontSize: 18, fontWeight: 700 }}>Total</span>
-              <span style={{ fontSize: 24, fontWeight: 700, color: '#16a34a' }}>₹{total}</span>
             </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 border border-slate-200 h-fit sticky top-4">
+            <h2 className="text-xl font-bold mb-4">Order Summary</h2>
+
+            <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
+              {cart.map((item, idx) => (
+                <div key={idx} className="flex justify-between text-sm">
+                  <span className="text-slate-600">{item.productName || item.name} x {item.qty}</span>
+                  <span className="font-semibold">₹{(Number(item.price) || 0) * (Number(item.qty) || 0)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-slate-200 pt-4 mb-6">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-bold">Total</span>
+                <span className="text-2xl font-bold text-green-600">₹{totalAmount}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handlePlaceOrder}
+              disabled={loading || totalAmount === 0}
+              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold disabled:opacity-50"
+            >
+              {loading? 'Placing Order...' : 'Place Order'}
+            </button>
           </div>
         </div>
       </div>
