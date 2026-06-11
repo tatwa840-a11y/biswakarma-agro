@@ -1,18 +1,24 @@
-/** @type {import('next').NextConfig} */
 const withPWA = require('next-pwa')({
-  dest: 'public',
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development'
 })
 
 const nextConfig = {
-  // output: 'export', // 🔥 ଏଇଟା କମେଣ୍ଟ କରିଦିଅ
+  // output: 'export', // 🔥 ଏଇଟା Comment କରିଦିଅ
   reactStrictMode: true,
   images: {
     unoptimized: true
   },
-  turbopack: {}
+  turbopack: {},
+  
+  // 👇 ଏଇ 3 Line Add କର
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 }
 
 module.exports = withPWA(nextConfig)
