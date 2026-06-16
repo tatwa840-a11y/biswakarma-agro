@@ -14,41 +14,51 @@ export default function CustomerProfile() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser)
-        const userDoc = await getDoc(doc(db, 'customers', currentUser.uid))
-        if (userDoc.exists()) {
-          setUserData(userDoc.data())
+      try {
+        if (currentUser) {
+          setUser(currentUser)
+          const userDoc = await getDoc(doc(db, 'customers', currentUser.uid))
+          if (userDoc.exists()) {
+            setUserData(userDoc.data())
+          } else {
+            console.log("No user data found!")
+          }
+        } else {
+          router.push('/customer-login')
         }
-      } else {
-        router.push('/customer-login') // Login ନଥିଲେ Login Page
+      } catch (error) {
+        console.error("Error fetching user data:", error)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })
     return () => unsubscribe()
   }, [router])
 
   const handleLogout = async () => {
     await signOut(auth)
+    setUser(null)
+    setUserData(null)
     router.push('/customer-login')
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-3">
         <div className="w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-slate-600 font-medium">ଦୟାକରି ଅପେକ୍ଷା କରନ୍ତୁ...</p>
       </div>
     )
   }
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b sticky top-0">
+      <header className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-green-700">🌾 Biswakarma Agro</h1>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-semibold"
+            className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-semibold transition"
           >
             <FiLogOut /> Logout
           </button>
@@ -74,8 +84,9 @@ export default function CustomerProfile() {
               <FiMail className="text-slate-500" />
               <div>
                 <p className="text-xs text-slate-500">Email</p>
-                <p className="font-semibold text-slate-800">{user?.email}</p>
+                <p className="font-semibold text-slate-800">{user?.email || 'Not Added'}</p>
               </div>
+            </div>
             <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
               <FiPhone className="text-slate-500" />
               <div>
@@ -95,7 +106,7 @@ export default function CustomerProfile() {
             <p>ଏପର୍ଯ୍ୟନ୍ତ କିଛି Order ନାହିଁ</p>
             <button
               onClick={() => router.push('/products')}
-              className="mt-4 bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold"
+              className="mt-4 bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold transition"
             >
               Shop Now / ଏବେ କିଣନ୍ତୁ
             </button>
