@@ -10,52 +10,90 @@ export default function CustomerDashboard() {
   const [customer, setCustomer] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('orders');
 
   useEffect(() => {
     const customerData = localStorage.getItem('customer');
     if (!customerData) {
-      router.push('/customer-login');
+      setLoading(false);
+      router.replace('/customer-login');
       return;
     }
-    const data = JSON.parse(customerData);
-    setCustomer(data);
-    fetchOrders(data.mobile);
-  }, [router]);
 
-  const fetchOrders = async (phone) => {
+    let parsedCustomer;
     try {
-      const q = query(
-        collection(db, 'orders'),
-        where('phone', '==', phone),
-        orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(q);
-      const ordersList = querySnapshot.docs.map(doc => ({ id: doc.id,...doc.data() }));
-      setOrders(ordersList);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-    } finally {
+      parsedCustomer = JSON.parse(customerData);
+    } catch (err) {
+      localStorage.removeItem('customer');
       setLoading(false);
+      router.replace('/customer-login');
+      return;
     }
-  };
+
+    if (!parsedCustomer?.mobile) {
+      localStorage.removeItem('customer');
+      setLoading(false);
+      router.replace('/customer-login');
+      return;
+    }
+
+    setCustomer(parsedCustomer);
+
+    const fetchOrders = async (phone) => {
+      try {
+        setError('');
+        const q = query(
+          collection(db, 'orders'),
+          where('phone', '==', phone),
+          orderBy('createdAt', 'desc')
+        );
+        const querySnapshot = await getDocs(q);
+        const ordersList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setOrders(ordersList);
+      } catch (err) {
+        console.error('Error fetching orders:', err);
+        setError('Unable to load your orders right now. Please refresh or try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrders(parsedCustomer.mobile);
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('customer');
-    router.push('/');
+    router.replace('/');
   };
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'Pending': return 'bg-yellow-100 text-yellow-700';
-      case 'Payment Pending': return 'bg-orange-100 text-orange-700';
-      case 'Processing': return 'bg-blue-100 text-blue-700';
-      case 'Shipped': return 'bg-purple-100 text-purple-700';
-      case 'Delivered': return 'bg-green-100 text-green-700';
-      case 'Cancelled': return 'bg-red-100 text-red-700';
-      default: return 'bg-slate-100 text-slate-700';
-    }
+  const statusClasses = {
+    Pending: 'bg-yellow-100 text-yellow-700',
+    'Payment Pending': 'bg-orange-100 text-orange-700',
+    Processing: 'bg-blue-100 text-blue-700',
+    Shipped: 'bg-purple-100 text-purple-700',
+    Delivered: 'bg-green-100 text-green-700',
+    Cancelled: 'bg-red-100 text-red-700',
   };
+
+  const getStatusColor = (status) => statusClasses[status] ?? 'bg-slate-100 text-slate-700';
+
+  const formatAmount = (value) => {
+    const amount = Number(value) || 0;
+    return amount.toLocaleString('en-IN');
+  };
+
+  const formatDate = (timestamp) => {
+    if (!timestamp?.toDate) return 'Unknown date';
+    return timestamp.toDate().toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+  };
+
+  const activeOrderCount = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled').length;
+  const totalSpent = orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+  const totalOrders = orders.length;
+
 
   if (loading) {
     return (
@@ -85,6 +123,12 @@ export default function CustomerDashboard() {
       </div>
 
       <div className="max-w-6xl mx-auto p-5">
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+            {error}
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-xl p-6 border border-slate-200">
@@ -94,7 +138,7 @@ export default function CustomerDashboard() {
               </div>
               <div>
                 <p className="text-slate-500 text-sm">Total Orders</p>
-                <p className="text-2xl font-bold">{orders.length}</p>
+                <p className="text-2xl font-bold">{totalOrders}</p>
               </div>
             </div>
           </div>
@@ -105,9 +149,7 @@ export default function CustomerDashboard() {
               </div>
               <div>
                 <p className="text-slate-500 text-sm">Active Orders</p>
-                <p className="text-2xl font-bold">
-                  {orders.filter(o => o.status!== 'Delivered' && o.status!== 'Cancelled').length}
-                </p>
+                <p className="text-2xl font-bold">{activeOrderCount}</p>
               </div>
             </div>
           </div>
@@ -118,9 +160,7 @@ export default function CustomerDashboard() {
               </div>
               <div>
                 <p className="text-slate-500 text-sm">Total Spent</p>
-                <p className="text-2xl font-bold">
-                  ₹{orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0)}
-                </p>
+                <p className="text-2xl font-bold">₹{formatAmount(totalSpent)}</p>
               </div>
             </div>
           </div>
@@ -160,11 +200,7 @@ export default function CustomerDashboard() {
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <p className="font-bold text-lg">#{order.id.slice(-6).toUpperCase()}</p>
-                            <p className="text-sm text-slate-500">
-                              {order.createdAt?.toDate().toLocaleDateString('en-IN', {
-                                day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                              })}
-                            </p>
+                            <p className="text-sm text-slate-500">{formatDate(order.createdAt)}</p>
                           </div>
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(order.status)}`}>
                             {order.status}
@@ -172,13 +208,13 @@ export default function CustomerDashboard() {
                         </div>
 
                         <div className="space-y-2 mb-4 bg-slate-50 rounded-lg p-3">
-                          {order.items.map((item, idx) => (
+                          {(order.items || []).map((item, idx) => (
                             <div key={idx} className="flex justify-between text-sm">
                               <span className="text-slate-700">
-                                {item.productName || item.name} x {item.qty}
+                                {item.productName || item.name || 'Item'} x {item.qty || 1}
                               </span>
                               <span className="font-semibold">
-                                ₹{(Number(item.price) || 0) * (Number(item.qty) || 0)}
+                                ₹{formatAmount((Number(item.price) || 0) * (Number(item.qty) || 1))}
                               </span>
                             </div>
                           ))}

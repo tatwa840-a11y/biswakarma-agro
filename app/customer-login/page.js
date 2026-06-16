@@ -21,31 +21,31 @@ export default function CustomerLogin() {
       alert('10 Digit Phone Number ଦିଅନ୍ତୁ');
       return;
     }
-
     setLoading(true);
-
-    // Check if customer exists
-    const q = query(collection(db, 'customers'), where('mobile', '==', phone));
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      // Old Customer - Name ଅଛି
-      setIsNewCustomer(false);
-      const customerData = querySnapshot.docs[0].data();
-      setName(customerData.name);
-    } else {
-      // New Customer - Name ମାଗିବ
-      setIsNewCustomer(true);
+    try {
+      // Check if customer exists
+      const q = query(collection(db, 'customers'), where('mobile', '==', phone));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        // Old Customer - Name ଅଛି
+        setIsNewCustomer(false);
+        const customerData = querySnapshot.docs[0].data();
+        setName(customerData.name);
+      } else {
+        // New Customer - Name ମାଗିବ
+        setIsNewCustomer(true);
+      }
+      // Generate 6 digit OTP
+      const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      setGeneratedOtp(randomOtp);
+      console.log('OTP:', randomOtp); // Testing ପାଇଁ Console ରେ ଦେଖିବ
+      alert(`Demo OTP: ${randomOtp}`); // Real SMS ବଦଳରେ Alert
+      setStep(2);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      setLoading(false);
     }
-
-    // Generate 6 digit OTP
-    const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(randomOtp);
-    console.log('OTP:', randomOtp); // Testing ପାଇଁ Console ରେ ଦେଖିବ
-    alert(`Demo OTP: ${randomOtp}`); // Real SMS ବଦଳରେ Alert
-
-    setStep(2);
-    setLoading(false);
   };
 
   // Step 2: Verify OTP
@@ -74,18 +74,17 @@ export default function CustomerLogin() {
           createdAt: serverTimestamp(),
         });
       }
-
       // LocalStorage ରେ Save କର
       const customerData = {
         name: customerName.trim(),
         mobile: phone,
       };
       localStorage.setItem('customer', JSON.stringify(customerData));
-
       alert('Login Successful!');
-      router.push('/customer'); // Dashboard କୁ ଯିବ
+      router.push('/customer/profile'); // Profile Page କୁ ଯିବ
     } catch (error) {
       alert('Error: ' + error.message);
+    } finally {
       setLoading(false);
     }
   };
@@ -101,7 +100,6 @@ export default function CustomerLogin() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-
         {/* Back Button */}
         <button
           onClick={() => router.push('/')}
@@ -109,7 +107,6 @@ export default function CustomerLogin() {
         >
           <FiArrowLeft /> Back to Home
         </button>
-
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <FiUser className="text-green-600" size={32} />
@@ -137,7 +134,6 @@ export default function CustomerLogin() {
                 />
               </div>
             </div>
-
             <button
               onClick={handleSendOtp}
               disabled={loading || phone.length!== 10}
@@ -156,7 +152,6 @@ export default function CustomerLogin() {
                 OTP ପଠାଗଲା: <span className="font-bold">+91 {phone}</span>
               </p>
             </div>
-
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
                 Enter OTP
@@ -170,7 +165,6 @@ export default function CustomerLogin() {
                 maxLength="6"
               />
             </div>
-
             <button
               onClick={handleVerifyOtp}
               disabled={otp.length!== 6}
@@ -178,7 +172,6 @@ export default function CustomerLogin() {
             >
               Verify OTP
             </button>
-
             <button
               onClick={() => setStep(1)}
               className="w-full text-slate-600 hover:text-slate-800 text-sm"
@@ -194,7 +187,6 @@ export default function CustomerLogin() {
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
               <p className="text-sm text-green-700">OTP Verified ✅</p>
             </div>
-
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
                 Your Full Name
@@ -210,7 +202,6 @@ export default function CustomerLogin() {
                 />
               </div>
             </div>
-
             <button
               onClick={handleNameSubmit}
               disabled={loading ||!name.trim()}

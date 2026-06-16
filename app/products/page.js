@@ -1,30 +1,49 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { FiShoppingCart, FiSearch, FiTrash2 } from 'react-icons/fi';
+import { 
+  FiShoppingCart, 
+  FiSearch, 
+  FiTrash2, 
+  FiFilter, 
+  FiPackage, 
+  FiTag, 
+  FiCheckCircle, 
+  FiXCircle,
+  FiArrowRight,
+  FiPlus
+} from 'react-icons/fi';
 import { useCart } from '../context/CartContext';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast, Toaster } from 'sonner';
 
+const CATEGORIES = [
+  { key: 'all',        label: 'All',        icon: '🛒' },
+  { key: 'seeds',      label: 'Seeds',      icon: '🌾' },
+  { key: 'fertilizer', label: 'Fertilizer', icon: '🧪' },
+  { key: 'pesticide',  label: 'Pesticide',  icon: '🐛' },
+  { key: 'herbicide',  label: 'Herbicide',  icon: '🌿' },
+  { key: 'equipment',  label: 'Equipment',  icon: '🔧' },
+  { key: 'organic',    label: 'Organic',    icon: '🍃' },
+  { key: 'other',      label: 'Other',      icon: '📦' },
+];
+
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
   const [deletingId, setDeletingId] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false); // Admin Check
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
   const { addToCart, cartItems } = useCart();
 
-  // 1. Admin Check କରିବା
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // Firebase ରେ User Custom Claims କିମ୍ବା Firestore 'users' collection Check କର
-        // Example: Admin Email Check
-        const adminEmails = ['admin@biswakarma.com', 'your-email@gmail.com']; // ତୁମ Admin Email ଏଠି ଦିଅ
+        const adminEmails = ['admin@biswakarma.com', 'your-email@gmail.com'];
         setIsAdmin(adminEmails.includes(user.email));
       } else {
         setIsAdmin(false);
@@ -37,13 +56,9 @@ export default function ProductsPage() {
     const fetchProducts = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'products'));
-        const productsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const productsData = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         const validProducts = productsData.filter(p => p.productName && p.sellingPrice);
         setProducts(validProducts);
-        setFilteredProducts(validProducts);
       } catch (error) {
         console.error('Error:', error);
         toast.error('Product Load ହେଲାନି');
@@ -54,13 +69,21 @@ export default function ProductsPage() {
     fetchProducts();
   }, []);
 
-  useEffect(() => {
-    const result = products.filter(p => 
-      p.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.brand?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredProducts(result);
-  }, [searchTerm, products]);
+  const filteredProducts = useMemo(() => {
+    let result = products;
+    if (activeCategory !== 'all') {
+      result = result.filter(p =>
+        p.category?.toLowerCase() === activeCategory.toLowerCase()
+      );
+    }
+    if (searchTerm.trim()) {
+      result = result.filter(p =>
+        p.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.brand?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    return result;
+  }, [searchTerm, activeCategory, products]);
 
   const handleAddToCart = (e, product) => {
     e.stopPropagation();
@@ -68,24 +91,16 @@ export default function ProductsPage() {
     toast.success(`${product.productName} cart କୁ Add ହେଲା!`);
   };
 
-  const handleDelete = async (e, id, productName, imageUrl) => {
+  const handleDelete = async (e, id, productName) => {
     e.stopPropagation();
-    if (!isAdmin) {
-      toast.error('Only Admin Delete କରିପାରିବ');
-      return;
-    }
-    
-    const confirm = window.confirm(`Delete "${productName}"? ଏଇଟା Undo ହେବନି!`);
-    if (!confirm) return;
-
+    if (!isAdmin) { toast.error('Only Admin Delete କରିପାରିବ'); return; }
+    if (!window.confirm(`Delete "${productName}"? ଏଇଟା Undo ହେବନି!`)) return;
     setDeletingId(id);
     try {
       await deleteDoc(doc(db, 'products', id));
-      setProducts(products.filter(p => p.id !== id));
-      setFilteredProducts(filteredProducts.filter(p => p.id !== id));
+      setProducts(prev => prev.filter(p => p.id !== id));
       toast.success('Product Delete ହେଲା ✅');
     } catch (error) {
-      console.error('Delete error:', error);
       toast.error('Delete Failed');
     }
     setDeletingId(null);
@@ -93,106 +108,446 @@ export default function ProductsPage() {
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.qty, 0);
 
+  const categoryCounts = useMemo(() => {
+    return CATEGORIES.reduce((acc, cat) => {
+      acc[cat.key] = cat.key === 'all'
+        ? products.length
+        : products.filter(p => p.category?.toLowerCase() === cat.key).length;
+      return acc;
+    }, {});
+  }, [products]);
+
   if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-      <div style={{ width: 50, height: 50, border: '4px solid #f3f3f3', borderTop: '4px solid #16a34a', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      height: '100vh', 
+      background: '#f8fafc', 
+      gap: 16,
+      fontFamily: 'Inter, sans-serif'
+    }}>
+      <div style={{ 
+        width: 48, 
+        height: 48, 
+        border: '3px solid #e2e8f0', 
+        borderTop: '3px solid #16a34a', 
+        borderRadius: '50%', 
+        animation: 'spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite' 
+      }} />
+      <p style={{ color: '#64748b', fontWeight: 500, fontSize: 14 }}>Preparing your shop...</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 
-  return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      <Toaster richColors />
-      <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '16px 0', position: 'sticky', top: 0, zIndex: 10 }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#16a34a', margin: 0 }}>Biswakarma Agro 🌾</h1>
-            <button onClick={() => router.push('/cart')} style={{ position: 'relative', padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FiShoppingCart size={20} />
-              Cart
-              {cartCount > 0 && (
-                <span style={{ position: 'absolute', top: -8, right: -8, background: '#dc2626', color: 'white', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
-                  {cartCount}
-                </span>
-              )}
-            </button>
-          </div>
-          <div style={{ position: 'relative' }}>
-            <FiSearch style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} size={20} />
-            <input 
-              type="text" 
-              placeholder="Search products by name or brand..." 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ width: '100%', padding: '12px 12px 12px 44px', border: '2px solid #e2e8f0', borderRadius: 12, fontSize: 16, outline: 'none' }}
-            />
-          </div>
-        </div>
-      </div>
+  const styles = {
+    page: { 
+      minHeight: '100vh', 
+      background: '#f8fafc', 
+      fontFamily: "'Sora', 'Inter', system-ui, sans-serif",
+      color: '#1e293b'
+    },
+    nav: { 
+      background: 'rgba(255, 255, 255, 0.8)', 
+      backdropFilter: 'blur(12px)',
+      position: 'sticky', 
+      top: 0, 
+      zIndex: 100, 
+      borderBottom: '1px solid #f1f5f9'
+    },
+    navInner: { 
+      maxWidth: 1200, 
+      margin: '0 auto', 
+      padding: '0 24px', 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      height: 72 
+    },
+    logo: { 
+      fontSize: 20, 
+      fontWeight: 800, 
+      color: '#0f172a', 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: 10,
+      letterSpacing: '-0.02em'
+    },
+    logoBadge: { 
+      background: '#16a34a', 
+      padding: '4px 10px', 
+      borderRadius: 8, 
+      fontSize: 10, 
+      fontWeight: 700, 
+      color: 'white',
+      textTransform: 'uppercase'
+    },
+    cartBtn: { 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: 10, 
+      background: '#0f172a', 
+      color: 'white', 
+      border: 'none', 
+      borderRadius: '12px', 
+      padding: '10px 20px', 
+      fontSize: 14, 
+      fontWeight: 600, 
+      cursor: 'pointer', 
+      position: 'relative',
+      transition: 'all 0.2s'
+    },
+    cartBadge: { 
+      position: 'absolute', 
+      top: -6, 
+      right: -6, 
+      background: '#16a34a', 
+      color: 'white', 
+      borderRadius: '50%', 
+      width: 20, 
+      height: 20, 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      fontSize: 11, 
+      fontWeight: 700,
+      boxShadow: '0 0 0 3px white'
+    },
+    header: {
+      padding: '40px 24px 24px',
+      maxWidth: 1200,
+      margin: '0 auto'
+    },
+    searchContainer: {
+      position: 'relative',
+      maxWidth: 600,
+      marginBottom: 32
+    },
+    searchInput: { 
+      width: '100%', 
+      padding: '14px 16px 14px 52px', 
+      border: '1px solid #e2e8f0', 
+      borderRadius: '16px', 
+      fontSize: 15, 
+      outline: 'none', 
+      background: 'white',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+      transition: 'all 0.2s'
+    },
+    searchIcon: { 
+      position: 'absolute', 
+      left: 18, 
+      top: '50%', 
+      transform: 'translateY(-50%)', 
+      color: '#94a3b8' 
+    },
+    filterScroll: { 
+      display: 'flex', 
+      gap: 10, 
+      overflowX: 'auto', 
+      padding: '4px 0 20px',
+      msOverflowStyle: 'none', 
+      scrollbarWidth: 'none' 
+    },
+    catBtn: (active) => ({ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: 8, 
+      padding: '10px 18px', 
+      borderRadius: '14px', 
+      border: active ? 'none' : '1px solid #e2e8f0', 
+      background: active ? '#16a34a' : 'white', 
+      fontSize: 14, 
+      fontWeight: 600, 
+      color: active ? 'white' : '#64748b', 
+      cursor: 'pointer', 
+      whiteSpace: 'nowrap', 
+      transition: 'all 0.2s',
+      boxShadow: active ? '0 10px 15px -3px rgba(16, 185, 129, 0.2)' : 'none'
+    }),
+    grid: { 
+      display: 'grid', 
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
+      gap: 24,
+      padding: '0 24px 40px',
+      maxWidth: 1200,
+      margin: '0 auto'
+    },
+    card: { 
+      background: 'white', 
+      borderRadius: '24px', 
+      overflow: 'hidden', 
+      border: '1px solid #f1f5f9', 
+      cursor: 'pointer', 
+      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      display: 'flex',
+      flexDirection: 'column'
+    },
+    cardImgWrap: { 
+      height: 220, 
+      background: '#f8fafc', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      position: 'relative'
+    },
+    cardImg: { 
+      width: '100%', 
+      height: '100%', 
+      objectFit: 'contain',
+      padding: 24
+    },
+    catTag: { 
+      position: 'absolute', 
+      top: 16, 
+      left: 16, 
+      background: 'rgba(255,255,255,0.9)', 
+      backdropFilter: 'blur(4px)',
+      color: '#1e293b', 
+      fontSize: 11, 
+      fontWeight: 700, 
+      padding: '6px 12px', 
+      borderRadius: '10px',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+    },
+    cardBody: { 
+      padding: '20px',
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column'
+    },
+    stockBadge: (inStock) => ({ 
+      display: 'inline-flex', 
+      alignItems: 'center',
+      gap: 4,
+      fontSize: 11, 
+      fontWeight: 700, 
+      padding: '4px 10px', 
+      borderRadius: '8px', 
+      background: inStock ? '#f0fdf4' : '#fef2f2', 
+      color: inStock ? '#166534' : '#991b1b',
+      marginBottom: 12
+    }),
+    cardName: { 
+      fontSize: 17, 
+      fontWeight: 700, 
+      color: '#0f172a', 
+      margin: '0 0 6px', 
+      lineHeight: 1.3 
+    },
+    cardMeta: { 
+      fontSize: 13, 
+      color: '#64748b', 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: 6,
+      marginBottom: 4
+    },
+    cardFooter: { 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      marginTop: 'auto', 
+      paddingTop: 20, 
+      borderTop: '1px solid #f1f5f9' 
+    },
+    price: { 
+      fontSize: 24, 
+      fontWeight: 800, 
+      color: '#0f172a', 
+      display: 'flex',
+      alignItems: 'baseline',
+      gap: 2
+    },
+    btnAdd: (inStock) => ({ 
+      width: 44,
+      height: 44,
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: inStock ? '#16a34a' : '#f1f5f9', 
+      color: inStock ? 'white' : '#94a3b8', 
+      border: 'none', 
+      borderRadius: '14px', 
+      cursor: inStock ? 'pointer' : 'not-allowed',
+      transition: 'all 0.2s',
+      boxShadow: inStock ? '0 4px 12px rgba(16, 185, 129, 0.2)' : 'none'
+    }),
+    btnDelete: { 
+      position: 'absolute',
+      top: 16,
+      right: 16,
+      width: 36,
+      height: 36,
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      background: 'rgba(255, 255, 255, 0.9)', 
+      color: '#ef4444', 
+      border: 'none', 
+      borderRadius: '10px', 
+      cursor: 'pointer',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    }
+  };
 
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 20px' }}>
-        <h2 style={{ fontSize: 24, fontWeight: 600, marginBottom: 24, color: '#0f172a' }}>All Products ({filteredProducts.length})</h2>
-        
+  return (
+    <div style={styles.page}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap');`}</style>
+      <Toaster richColors position="bottom-center" />
+
+      <nav style={styles.nav}>
+        <div style={styles.navInner}>
+          <div style={styles.logo}>
+            <div style={{ background: '#16a34a', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FiPackage color="white" size={18} />
+            </div>
+            Biswakarma Agro
+            <span style={styles.logoBadge}>STORE</span>
+          </div>
+          <button style={styles.cartBtn} onClick={() => router.push('/cart')}>
+            <FiShoppingCart size={18} />
+            {cartCount > 0 && <span style={styles.cartBadge}>{cartCount}</span>}
+          </button>
+        </div>
+      </nav>
+
+      <header style={styles.header}>
+        <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.03em' }}>
+          Explore <span style={{ color: '#16a34a' }}>Products</span>
+        </h1>
+        <p style={{ color: '#64748b', marginBottom: 32 }}>Quality agro products for your farming needs</p>
+
+        <div style={styles.searchContainer}>
+          <FiSearch style={styles.searchIcon} size={20} />
+          <input
+            style={styles.searchInput}
+            type="text"
+            placeholder="Search products or brands..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            onFocus={e => {
+              e.target.style.borderColor = '#16a34a';
+              e.target.style.boxShadow = '0 0 0 4px rgba(22, 163, 74, 0.1)';
+            }}
+            onBlur={e => {
+              e.target.style.borderColor = '#e2e8f0';
+              e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+            }}
+          />
+        </div>
+
+        <div style={styles.filterScroll}>
+          {CATEGORIES.map(cat => {
+            const active = activeCategory === cat.key;
+            return (
+              <button key={cat.key} style={styles.catBtn(active)} onClick={() => setActiveCategory(cat.key)}>
+                <span style={{ fontSize: 18 }}>{cat.icon}</span>
+                {cat.label}
+                <span style={{ 
+                  fontSize: 11, 
+                  marginLeft: 4, 
+                  opacity: 0.7,
+                  background: active ? 'rgba(255,255,255,0.2)' : '#f1f5f9',
+                  padding: '2px 6px',
+                  borderRadius: '6px'
+                }}>
+                  {categoryCounts[cat.key]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </header>
+
+      <main style={styles.grid}>
         {filteredProducts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
-            <p style={{ fontSize: 18 }}>No products found</p>
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '100px 20px' }}>
+            <div style={{ fontSize: 64, marginBottom: 20 }}>🍃</div>
+            <h3 style={{ fontSize: 20, fontWeight: 700, color: '#1e293b', margin: '0 0 8px' }}>No products found</h3>
+            <p style={{ color: '#64748b', margin: 0 }}>Try searching for something else or change category</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24 }}>
-            {filteredProducts.map(product => (
-              <div key={product.id} onClick={() => router.push(`/products/${product.id}`)} 
-                style={{ background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)', cursor: 'pointer', transition: 'all 0.3s', border: '1px solid #e2e8f0', position: 'relative' }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgb(0 0 0 / 0.1)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 3px 0 rgb(0 0 0 / 0.1)'; }}
+          filteredProducts.map(product => {
+            const inStock = product.stockStatus === 'In Stock';
+            const catMeta = CATEGORIES.find(c => c.key === product.category?.toLowerCase());
+            return (
+              <div
+                key={product.id}
+                style={styles.card}
+                onClick={() => router.push(`/products/${product.id}`)}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-8px)';
+                  e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02)';
+                  e.currentTarget.style.borderColor = '#16a34a30';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.borderColor = '#f1f5f9';
+                }}
               >
-                <div style={{ height: 220, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-                  {product.imageUrl ? (
-                    <img src={product.imageUrl} alt={product.productName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  ) : (
-                    <div style={{ color: '#94a3b8', fontSize: 14 }}>No Image</div>
+                <div style={styles.cardImgWrap}>
+                  {product.category && (
+                    <span style={styles.catTag}>{catMeta?.icon || '📦'} {product.category}</span>
                   )}
+                  {isAdmin && (
+                    <button
+                      style={styles.btnDelete}
+                      onClick={e => handleDelete(e, product.id, product.productName)}
+                      disabled={deletingId === product.id}
+                    >
+                      <FiTrash2 size={16} />
+                    </button>
+                  )}
+                  {product.imageUrl
+                    ? <img src={product.imageUrl} alt={product.productName} style={styles.cardImg} />
+                    : <div style={{ fontSize: 60, opacity: 0.2 }}>🚜</div>}
                 </div>
-                <div style={{ padding: 16 }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ background: product.stockStatus === 'In Stock' ? '#dcfce7' : '#fee2e2', color: product.stockStatus === 'In Stock' ? '#166534' : '#991b1b', padding: '2px 8px', borderRadius: 12, fontSize: 12, fontWeight: 600 }}>
-                      {product.stockStatus}
-                    </span>
+                
+                <div style={styles.cardBody}>
+                  <div style={styles.stockBadge(inStock)}>
+                    {inStock ? <FiCheckCircle size={12} /> : <FiXCircle size={12} />}
+                    {inStock ? 'In Stock' : 'Out of Stock'}
                   </div>
-                  <h3 style={{ fontSize: 16, fontWeight: 600, margin: '8px 0', color: '#0f172a', height: 40, overflow: 'hidden' }}>
-                    {product.productName}
-                  </h3>
-                  <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0' }}>{product.brand}</p>
-                  <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 12px' }}>{product.packSize} {product.unit}</p>
                   
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 8 }}>
-                    <p style={{ fontSize: 24, fontWeight: 700, color: '#16a34a', margin: 0 }}>₹{product.sellingPrice}</p>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {/* Delete Button - କେବଳ Admin ଦେଖିବ */}
-                      {isAdmin && (
-                        <button 
-                          onClick={(e) => handleDelete(e, product.id, product.productName, product.imageUrl)}
-                          disabled={deletingId === product.id}
-                          style={{ padding: '8px', background: deletingId === product.id ? '#94a3b8' : '#dc2626', color: 'white', border: 'none', borderRadius: 8, cursor: deletingId === product.id ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center' }}
-                          title="Delete Product"
-                        >
-                          <FiTrash2 size={16} />
-                        </button>
-                      )}
-                      <button 
-                        onClick={(e) => handleAddToCart(e, product)} 
-                        disabled={product.stockStatus !== 'In Stock'}
-                        style={{ padding: '8px 12px', background: product.stockStatus === 'In Stock' ? '#16a34a' : '#94a3b8', color: 'white', border: 'none', borderRadius: 8, cursor: product.stockStatus === 'In Stock' ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
-                      >
-                        <FiShoppingCart size={16} /> Add
-                      </button>
+                  <h3 style={styles.cardName}>{product.productName}</h3>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    {product.brand && (
+                      <div style={styles.cardMeta}>
+                        <FiTag size={12} color="#16a34a" /> {product.brand}
+                      </div>
+                    )}
+                    {product.packSize && (
+                      <div style={styles.cardMeta}>
+                        <FiPackage size={12} color="#16a34a" /> {product.packSize} {product.unit}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={styles.cardFooter}>
+                    <div style={styles.price}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#64748b', marginRight: 2 }}>₹</span>
+                      {product.sellingPrice}
                     </div>
+                    <button
+                      style={styles.btnAdd(inStock)}
+                      onClick={e => handleAddToCart(e, product)}
+                      disabled={!inStock}
+                      onMouseEnter={e => { if(inStock) e.currentTarget.style.background = '#15803d'; }}
+                      onMouseLeave={e => { if(inStock) e.currentTarget.style.background = '#16a34a'; }}
+                    >
+                      <FiPlus size={20} />
+                    </button>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })
         )}
-      </div>
+      </main>
     </div>
   );
 }
